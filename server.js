@@ -11,7 +11,7 @@ app.use(express.json()); // Parses JSON bodies of incoming requests
 
 // Database connection
 // Store the Mongoose connection object globally
-let db; // Declare 'db' here
+let db; // <--- THIS IS THE MISSING DECLARATION
 mongoose.connect('mongodb+srv://prayer_app_user_new:cnUD4CnoQXQ5J9rx@cluster0.l7isr4v.mongodb.net/prayerConclave?retryWrites=true&w=majority&appName=Cluster0', {
   useNewUrlParser: true,
   useUnifiedTopology: true
