@@ -1,102 +1,95 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
-const Country = require('./models/Country'); // Ensure this path is correct
+const Country = require('./models/Country');
+const PrayerScheduleSlot = require('./models/PrayerScheduleSlot');
 
 const app = express();
 
 // Middleware
-app.use(cors()); // Enables cross-origin requests from your frontend
-app.use(express.json()); // Parses JSON bodies of incoming requests
+app.use(cors());
+app.use(express.json());
 
 // Database connection
-// Store the Mongoose connection object globally
-let db; 
-mongoose.connect('mongodb+srv://prayer_app_user_new:cnUD4CnoQXQ5J9rx@cluster0.l7isr4v.mongodb.net/prayerConclave?retryWrites=true&w=majority&appName=Cluster0', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(client => { 
-    db = client.connections[0].db; 
-    console.log('Connected to MongoDB');
-})
-.catch(err => console.error('MongoDB connection error:', err));
+mongoose.connect(
+  'mongodb+srv://prayer_app_user_new:cnUD4CnoQXQ5J9rx@cluster0.l7isr4v.mongodb.net/prayerConclave?retryWrites=true&w=majority&appName=Cluster0',
+  {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  }
+)
+.then(() => console.log('✅ Connected to MongoDB Atlas'))
+.catch((err) => console.error('❌ MongoDB connection error:', err));
 
 
-// API Routes
-// Route to get all countries (for sidebar)
+// =========================
+// API ROUTES
+// =========================
+
+// 1. Get all countries (for sidebar)
 app.get('/api/countries', async (req, res) => {
   try {
-    // Only fetch name and region for the sidebar, and sort by name
-    const countries = await Country.find({}, 'name region').sort({name: 1});
+    const countries = await Country.find({}, 'name region').sort({ name: 1 }).lean();
     res.json(countries);
   } catch (error) {
-    console.error('Error fetching all countries:', error); // Log error on backend
+    console.error('Error fetching all countries:', error);
     res.status(500).json({ message: 'Error fetching all countries: ' + error.message });
   }
 });
 
-// Route to get a single country by name (for details)
+// 2. Get a single country by name (for details)
 app.get('/api/countries/:name', async (req, res) => {
   try {
-    const countryName = decodeURIComponent(req.params.name); // Decode URL-encoded name
-    const country = await Country.findOne({ name: countryName });
+    const countryName = decodeURIComponent(req.params.name);
+    const country = await Country.findOne({ name: countryName }).lean();
     if (!country) {
       return res.status(404).json({ message: 'Country not found' });
     }
     res.json(country);
   } catch (error) {
-    console.error('Error fetching single country:', error); // Log error on backend
+    console.error('Error fetching single country:', error);
     res.status(500).json({ message: 'Error fetching country details: ' + error.message });
   }
 });
 
-// NEW API Route: Get the current prayer slot
+// 3. Get the current live prayer slot
 app.get('/api/current-prayer-slot', async (req, res) => {
   try {
-    // Ensure 'db' is initialized before attempting to use it
-    if (!db) {
-        throw new Error("Database connection not initialized.");
-    }
-
     const now = new Date();
-    // Use .getUTCDay() for consistency with array indexing if needed, but for dayOfWeek string, now.getDay() is fine.
-    const dayOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.getDay()];
-    
-    // Get current time in IST for comparison
-    const istTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Kolkata"}));
+    const dayOfWeek = [
+      "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
+    ][now.getDay()];
+
+    // Convert current time to IST (HH:MM format)
+    const istTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
     const istHour = String(istTime.getHours()).padStart(2, '0');
     const istMinute = String(istTime.getMinutes()).padStart(2, '0');
-    const currentTime24hIST = `${istHour}:${istMinute}`; // HH:MM format in IST
+    const currentTime24hIST = `${istHour}:${istMinute}`;
 
-    console.log(`Live Prayer Request: Day=${dayOfWeek}, Time=${currentTime24hIST} IST`);
+    console.log(`🔎 Checking Prayer Slot → Day=${dayOfWeek}, Time=${currentTime24hIST} IST`);
 
-    // Find the slot for the current day and time
-    const currentSlot = await db.collection('prayerScheduleSlots').findOne({
-      dayOfWeek: dayOfWeek,
-      startTime24hIST: { $lte: currentTime24hIST }, // Start time is less than or equal to current
-      endTime24hIST: { $gt: currentTime24hIST }    // End time is greater than current (exclusive of end)
-    });
+    // Find current slot
+    const currentSlot = await PrayerScheduleSlot.findOne({
+      dayOfWeek,
+      startTime24hIST: { $lte: currentTime24hIST },
+      endTime24hIST: { $gt: currentTime24hIST }
+    }).lean();
 
     if (currentSlot) {
-      // For each target in the slot, if it's a country, fetch its full details
-      const populatedTargets = await Promise.all(currentSlot.slotTargets.map(async (target) => {
-        if (target.type === 'country') {
-          // Use db.collection('countries') to fetch from the correct collection
-          const countryDetails = await db.collection('countries').findOne({ name: target.countryName }); 
-          if (!countryDetails) {
-              console.warn(`Country details not found for: ${target.countryName}`);
+      // Populate country details for country-type targets
+      const populatedTargets = await Promise.all(
+        (currentSlot.slotTargets || []).map(async (target) => {
+          if (target.type === 'country') {
+            const countryDetails = await Country.findOne({ name: target.countryName }).lean();
+            return { ...target, countryDetails };
           }
-          // Convert Mongoose document to plain JavaScript object before spreading
-          return { ...target, countryDetails: countryDetails ? countryDetails.toObject() : null };
-        }
-        return target; // Return linguistic/topic targets as is
-      }));
-      // Convert Mongoose document to plain JavaScript object before sending
-      res.json({ ...currentSlot.toObject(), slotTargets: populatedTargets });
+          return target;
+        })
+      );
+
+      res.json({ ...currentSlot, slotTargets: populatedTargets });
     } else {
-      // If no specific slot found for this time
-      res.json({ type: "general", message: "General Prayer Time / No Specific Slot" });
+      res.json({ type: "general", message: "🙏 General Prayer Time / No Specific Slot" });
     }
 
   } catch (error) {
@@ -106,20 +99,22 @@ app.get('/api/current-prayer-slot', async (req, res) => {
 });
 
 
-// Catch-all for unhandled routes (will return 404)
+// =========================
+// FALLBACKS & ERROR HANDLING
+// =========================
 app.use((req, res, next) => {
-  res.status(404).send("Cannot GET " + req.originalUrl);
+  res.status(404).send("❌ Cannot GET " + req.originalUrl);
 });
 
-// Error handling middleware (optional, but good practice)
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error("Unexpected Error:", err.stack);
   res.status(500).send('Something broke!');
 });
 
-
-// Start server
+// =========================
+// START SERVER
+// =========================
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
