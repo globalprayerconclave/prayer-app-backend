@@ -55,26 +55,27 @@ app.get('/api/countries/:name', async (req, res) => {
 // 3. Get the current live prayer slot
 app.get('/api/current-prayer-slot', async (req, res) => {
   try {
-    const now = new Date();
-    const dayOfWeek = [
-      "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
-    ][now.getDay()];
+    // 1. Get current time in IST (RELIABLE METHOD)
+const now = new Date();
+const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+const istTime = new Date(now.getTime() + istOffset);
 
-    // Convert current time to IST (HH:MM format)
-    const istTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-    const istHour = String(istTime.getHours()).padStart(2, '0');
-    const istMinute = String(istTime.getMinutes()).padStart(2, '0');
-    const currentTime24hIST = `${istHour}:${istMinute}`;
+// 2. Calculate IST day and time
+const istDayOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday",
+                     "Thursday", "Friday", "Saturday"][istTime.getUTCDay()];
 
-    console.log(`🔎 Checking Prayer Slot → Day=${dayOfWeek}, Time=${currentTime24hIST} IST`);
+const istHours = String(istTime.getUTCHours()).padStart(2, '0');
+const istMinute = String(istTime.getUTCMinutes()).padStart(2, '0');
+const currentTime24hIST = `${istHours}:${istMinute}`;
 
-    // Find current slot
-    const currentSlot = await PrayerScheduleSlot.findOne({
-      dayOfWeek,
-      startTime24hIST: { $lte: currentTime24hIST },
-      endTime24hIST: { $gt: currentTime24hIST }
-    }).lean();
+console.log(`🔎 [CORRECTED] Prayer Slot → Day=${istDayOfWeek}, Time=${currentTime24hIST} IST`);
 
+// 3. Find matching prayer slot
+const currentSlot = await PrayerScheduleSlot.findOne({
+  dayOfWeek: istDayOfWeek, // <--- Using the new, reliable IST day
+  startTime24hIST: { $lte: currentTime24hIST },
+  endTime24hIST: { $gt: currentTime24hIST }
+}).lean();
     if (currentSlot) {
       // Populate country details for country-type targets
       const populatedTargets = await Promise.all(
