@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+
+// Import Mongoose models
 const Country = require('./models/Country');
 const PrayerScheduleSlot = require('./models/PrayerScheduleSlot');
 
@@ -8,13 +10,15 @@ const app = express();
 
 // CORS Configuration
 const corsOptions = {
-  origin: 'https://kaleidoscopic-stardust-dc094d.netlify.app', // <--- Your Netlify frontend URL
+  origin: 'https://kaleidoscopic-stardust-dc094d.netlify.app', // Your Netlify frontend URL
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   credentials: true, // Allow cookies to be sent
   optionsSuccessStatus: 204 // For preflight requests
 };
 app.use(cors(corsOptions)); // Apply CORS with specific options
 app.use(express.json());
+
+// ... rest of your server.js code ...
 
 // Database connection
 mongoose.connect(
