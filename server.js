@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const Country = require('./models/Country');
+const PrayerScheduleSlot = require('./models/PrayerScheduleSlot');
 
 const app = express();
 
