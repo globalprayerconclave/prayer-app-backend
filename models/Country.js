@@ -10,7 +10,12 @@ const countrySchema = new mongoose.Schema({
   prominentReligion: { type: String, required: true },
   christianPopulation: { type: String, required: true },
   prayerSchedule: { type: String, required: true },
-  prayerPoints: { type: [String], required: true },
+  prayerPoints: [
+  {
+    category: { type: String, required: true },
+    points: [String]
+  }
+],
   lat: { type: Number, required: true },
   lon: { type: Number, required: true }
 });
